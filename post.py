@@ -1,7 +1,8 @@
+from itertools import count
 from typing import Optional
 from flask import Flask, request, jsonify
 from flask_pydantic_spec import FlaskPydanticSpec, Response, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from tinydb import TinyDB, Query
 
 server = Flask(__name__)
@@ -9,11 +10,12 @@ spec = FlaskPydanticSpec('flask', title='apredizagem de API')  # aqui ele cria u
 # APIs disponiveis para testalas e ver seus funcionamentos
 spec.register(server)
 database = TinyDB('database.json')  # criamos o banco de dados para a aplicação
+contagem = count()  # cria uma contagem automatica, ele usa o função 'next'
 
 
 # isso não é uma classe de orientação a objeto, isso é uma data class (uma classe só visual)
 class Pessoa(BaseModel):
-    id: Optional[int]
+    id: Optional[int] = Field(default_factory=lambda: next(contagem))  # o lambda chama a função next
     nome: str
     idade: int
 
@@ -59,6 +61,14 @@ def altera_pessoa(id):  # vamos alterar os registros baseado no 'id'
     return jsonify(body)
 # agora temos um jeito de mudar os registros baseado na id
 
+
+# DELET
+@server.delete('/pessoas/<int:id>')  # ele passo o 'id' que é um interio da pessoa
+@spec.validate(resp=Response('HTTP_204'))  # ele n precisa do 'body', ele n precisa receber nqm
+def deleta_pessoa(id):                     # perceba que o retorno é 204
+    Pessoa = Query()
+    database.remove(Pessoa.id == id)  # ele remove com base no ID
+    return jsonify('deletado')
 
 
 
