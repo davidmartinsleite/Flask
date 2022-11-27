@@ -4,16 +4,26 @@ from flask import Flask, request, jsonify
 from flask_pydantic_spec import FlaskPydanticSpec, Response, Request
 from pydantic import BaseModel, Field
 from tinydb import TinyDB, Query
+from tinydb.storages import MemoryStorage  # ele consegue colocar dados em memorio
+
 
 server = Flask(__name__)
 spec = FlaskPydanticSpec('flask', title='apredizagem de API')  # aqui ele cria uma pagina com todas as
 # APIs disponiveis para testalas e ver seus funcionamentos
 spec.register(server)
-database = TinyDB('database.json')  # criamos o banco de dados para a aplicação
+# database = TinyDB('database.json')  # criamos o banco de dados para a aplicação aqui ele armazena os dados
+database = TinyDB(storage=MemoryStorage)  # toda vida que a aplicação reiniucia o banco começa novamente do ZERO
 contagem = count()  # cria uma contagem automatica, ele usa o função 'next'
 
 
 # isso não é uma classe de orientação a objeto, isso é uma data class (uma classe só visual)
+
+class QueryPessoa(BaseModel):
+    id: Optional[int]
+    nome: Optional[str]
+    idade: Optional[int]
+
+
 class Pessoa(BaseModel):
     id: Optional[int] = Field(default_factory=lambda: next(contagem))  # o lambda chama a função next
     nome: str
@@ -27,20 +37,37 @@ class Pessoas(BaseModel):
 
 # GET
 @server.get('/pessoas')
-@spec.validate(resp=Response(HTTP_200=Pessoas))  # caso tenha sucesso (200)
+@spec.validate(
+    query=QueryPessoa,
+    resp=Response(HTTP_200=Pessoas)
+)  # caso tenha sucesso (200)
 def buscar_pessoas():
     '''Retorna todas as pessoas da base de dados.'''
-    return jsonify(
+    query = request.context.query.dict(exclude_none=True)
+    # breakpoint()  # serve para debug, ele vai travar
+    todas_as_pessoas = database.search(
+        Query().fragment(query)
+    )
+    return jsonify(  # aqui é oq ele retorna, nesse caso retorna o 'todas_as_pessoas'
         Pessoas(
-            pessoas=database.all(),
-            count=len(database.all())
+            pessoas=todas_as_pessoas,
+            count=len(todas_as_pessoas)
         ).dict()  # vamos converter para um dicionario e ver como via ser o comportamento
     )
-
+# GET 02
+@server.get('/pessoas/<int:id>')
+@spec.validate(resp=Response(HTTP_200=Pessoa))  # caso tenha sucesso (200)
+def buscar_pessoa(id):
+    '''Retorna uma pessoa da base de dados.'''
+    try:
+        pessoa = database.search(Query().id == id)[0]
+    except IndexError:
+        return {'massage': 'Pessoa não encontrada'}, 404  # aqui ele retorna o não encontrado
+    return jsonify(pessoa)
 
 # POST
 @server.post('/pessoas')  # aqui vamos enviar um dado para o server, ele vai ser no mesmo endpoint pessoas
-@spec.validate(body=Request(Pessoa), resp=Response(HTTP_200=Pessoa))  # precisamos receber o corpo da requisição
+@spec.validate(body=Request(Pessoa), resp=Response(HTTP_201=Pessoa))  # precisamos receber o corpo da requisição
 # aqui ele vai requisitar Pessoa
 def inserir_pessoa():
     '''Insere uma Pessoa no banco de dados.'''  # a docstring aparece no sistema
